@@ -324,7 +324,7 @@ export default class Notes extends View {
         }));
 
     return v_flex().id("notes").size_full().min_w(0).bg(t.surface).text_color(t.foreground).child(head)
-      .child(div().flex_1().min_h(0).when(true, (el) => el.child(body)))
+      .child(v_flex().flex_1().min_h(0).min_w(0).child(body))
       .child(h_flex().flex_none().px(10).py(5).gap(8).border_t(1).border_color(t.border)
         .child(div().flex_1().min_w(0).truncate().text_size(10.5).text_color(t.dim)
           .child(this.pasted ?? (this.saved ? "Saved" : "Saves as you type")))
