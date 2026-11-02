@@ -1,11 +1,12 @@
 // Notes: markdown files in ~/.config/herdr-app/notes, written with a live preview, pictures pasted
 // straight into the text. Nothing but those files is stored, so they are yours to edit anywhere.
 import { View, div, image } from "gpui-kit";
-import { v_flex, h_flex, Textarea, TextareaState, TextView } from "gpui-base";
+import { v_flex, h_flex, Input, InputState, Textarea, TextareaState, TextView } from "gpui-base";
 import { agents, focused, appHome, exec, theme, window, props, openOverlay, closeOverlay } from "herdr";
 import * as fs from "fs/promises";
 
 const BASE = () => appHome() + "\\notes";
+const PINS = () => BASE() + "\\pins.json";
 const IMAGES = () => BASE() + "\\images";
 // One folder per agent: the notes list belongs to whoever is in front.
 const keyOf = () => String(focused()?.agent ?? "shared").replace(/[^A-Za-z0-9_.-]+/g, "_");
@@ -41,6 +42,8 @@ export default class Notes extends View {
     this.view = "read";  // "write" | "read"
     this.state = null;    // TextareaState of the open note
     this.pasted = null;   // the last pasted picture, while it is being inserted
+    this.pins = {};       // "agent/name" -> pinned at: pinned notes show under every agent
+    this.pinned = [];     // the pinned notes that still exist
     this.agent = keyOf(); // whose notes these are
     this.noteAgent = this.agent;
     this.list(cx);
@@ -55,13 +58,63 @@ export default class Notes extends View {
       const names = (await fs.readdir(dirFor(key))).filter((n) => n.endsWith(".md"));
       if (this.agent === key) this.notes = names.sort().reverse().map((name) => ({ name }));
     } catch { if (this.agent === key) this.notes = []; }
+    await this.readPins();
+    const pinned = [];
+    for (const k of Object.keys(this.pins)) {
+      const at = k.indexOf("/");
+      const agent = k.slice(0, at), name = k.slice(at + 1);
+      if (!agent || !name) continue;
+      if (await fs.exists(dirFor(agent) + "\\" + name).catch(() => false)) pinned.push({ agent, name });
+    }
+    this.pinned = pinned;
     cx.notify();
   }
 
-  async open(name, cx) {
+  async readPins() {
+    try {
+      const raw = JSON.parse(await fs.readFile(PINS(), "utf8"));
+      this.pins = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+    } catch { this.pins = this.pins ?? {}; }
+  }
+
+  pinKey(agent, name) {
+    return agent + "/" + name;
+  }
+
+  async togglePin(agent, name, cx) {
+    const k = this.pinKey(agent, name);
+    if (this.pins[k]) delete this.pins[k];
+    else this.pins[k] = new Date().toISOString();
+    try {
+      await fs.mkdir(BASE(), { recursive: true });
+      await fs.writeFile(PINS(), JSON.stringify(this.pins, null, 1));
+    } catch { /* the list still reflects the choice in memory */ }
+    await this.list(cx);
+  }
+
+  // Renaming is write + delete: the sandbox has no rename.
+  async rename(oldName, wanted, cx) {
+    const clean = String(wanted ?? "").trim().replace(/[\\/:*?"<>|]/g, "").replace(/\.md$/i, "").slice(0, 60);
+    const to = clean ? clean + ".md" : "";
+    if (!to || to === oldName) { this.renaming = false; cx.notify(); return; }
+    const agent = this.noteAgent, from = dirFor(agent) + "\\" + oldName, next = dirFor(agent) + "\\" + to;
+    try {
+      const text = (await fs.readFile(from, "utf8")) ?? "";
+      await fs.writeFile(next, text);
+      await fs.unlink(from).catch(() => {});
+      const k = this.pinKey(agent, oldName);
+      if (this.pins[k]) { delete this.pins[k]; this.pins[this.pinKey(agent, to)] = new Date().toISOString(); await fs.writeFile(PINS(), JSON.stringify(this.pins, null, 1)).catch(() => {}); }
+      this.note = to;
+      this.noteAgent = agent;
+    } catch { this.pasted = "改名失败。"; }
+    this.renaming = false;
+    await this.list(cx);
+  }
+
+  async open(name, cx, agent) {
     this.release();
     this.note = name;
-    this.noteAgent = this.agent;
+    this.noteAgent = agent ?? this.agent;
     this.view = "write";
     try {
       this.text = (await fs.readFile(dirFor(this.noteAgent) + "\\" + name, "utf8")) || "";
@@ -144,6 +197,16 @@ export default class Notes extends View {
     return { w: Math.round(s.w * k), h: Math.round(s.h * k) };
   }
 
+  startRename(cx) {
+    const value = this.note.replace(/\.md$/, "");
+    this.nameInput = InputState.new({ value });
+    this.nameInput.set_selected_range({ start: 0, end: value.length });
+    this.nameInput.on("submit", (_e, cx) => this.rename(this.note, this.nameInput.value(), cx));
+    this.renaming = true;
+    this.nameInput.focus();
+    cx.notify();
+  }
+
   insert(add, cx) {
     const next = (this.text ?? "").replace(/\s+$/, "") + add;
     this.text = next;
@@ -186,8 +249,12 @@ export default class Notes extends View {
       .when(Boolean(this.note), (el) => el.child(h_flex().id("notes-back").h(24).px(6).flex_none().items_center().rounded(6)
         .text_size(11.5).text_color(t.dim).hover((x) => x.bg(t.hover).text_color(t.foreground))
         .on_click((_e, cx) => { this.release(); this.note = null; this.list(cx); }).child("←")))
-      .child(div().flex_1().min_w(0).truncate().text_size(12).font_semibold()
-        .child(this.note ? this.note.replace(/\.md$/, "") : "Notes"))
+      .child(this.note && this.renaming
+        ? div().flex_1().min_w(0).child(Input.new(this.nameInput).h(24).px(8).rounded(6).border_1()
+          .border_color(t.accent).bg(t.background).text_size(12).text_color(t.foreground))
+        : div().flex_1().min_w(0).truncate().text_size(12).font_semibold()
+          .when(Boolean(this.note), (el) => el.cursor_pointer().on_click((_e, cx) => this.startRename(cx)))
+          .child(this.note ? this.note.replace(/\.md$/, "") : "Notes"))
       .when(!this.note, (el) => el.child(div().max_w(150).truncate().text_size(10.5).text_color(t.dim)
         .child(who ? "· " + (who.space_name ?? who.address) : "· 无 agent")))
       .when(Boolean(this.note), (el) => el.child(h_flex().h(24).flex_none().rounded(6).bg(t.raised).p(1).gap(1)
@@ -197,18 +264,41 @@ export default class Notes extends View {
         .child(h_flex().id("notes-read").h(22).px(8).items_center().rounded(5).text_size(11).cursor_pointer()
           .bg(this.view === "read" ? t.selected : t.raised).text_color(this.view === "read" ? t.foreground : t.dim)
           .on_click((_e, cx) => { this.view = "read"; cx.notify(); }).child("读"))))
+      .when(Boolean(this.note), (el) => el.child(h_flex().id("notes-pin").h(22).px(7).flex_none().items_center().rounded(6)
+        .text_size(10.5).text_color(this.pins[this.pinKey(this.noteAgent, this.note)] ? t.foreground : t.dim)
+        .bg(this.pins[this.pinKey(this.noteAgent, this.note)] ? t.selected : t.chrome)
+        .border_1().border_color(t.border).hover((x) => x.bg(t.hover).text_color(t.foreground))
+        .on_click((_e, cx) => this.togglePin(this.noteAgent, this.note, cx))
+        .child("pin")))
       .child(button("notes-new", "＋", (_e, cx) => this.create(cx)))
       .when(inPane && !this.note, (el) => el.child(button("notes-open", "打开", (_e, cx) => openOverlay({ mod: "notes", kind: "dialog", width: 620, height: 660 }))));
 
     if (!this.note) {
-      const row = (n) => h_flex().id("note-" + n.name).h(28).flex_none().px(10).gap(8).items_center().cursor_pointer()
+      const pinnedNow = (agent, name) => Boolean(this.pins[this.pinKey(agent, name)]);
+      const pinTag = (agent, name) => h_flex().id("pin-" + agent + "-" + name).h(18).px(6).flex_none().items_center().rounded(4)
+        .text_size(10).bg(pinnedNow(agent, name) ? t.selected : t.chrome)
+        .text_color(pinnedNow(agent, name) ? t.foreground : t.dim)
+        .hover((x) => x.bg(t.hover).text_color(t.foreground))
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => this.togglePin(agent, name, cx))
+        .child(pinnedNow(agent, name) ? "pinned" : "钉");
+      const row = (n, label) => h_flex().id("note-" + n.agent + "-" + n.name).h(28).flex_none().px(10).gap(8).items_center().cursor_pointer()
         .text_size(12).text_color(t.foreground).hover((x) => x.bg(t.hover))
-        .on_click((_e, cx) => this.open(n.name, cx))
-        .child(div().flex_1().min_w(0).truncate().child(n.name.replace(/\.md$/, "")));
+        .on_click((_e, cx) => this.open(n.name, cx, n.agent))
+        .child(div().flex_1().min_w(0).truncate().child(label))
+        .child(pinTag(n.agent, n.name));
+      const title = (text, count) => h_flex().flex_none().px(10).pt(8).pb(2).gap(6).items_center()
+        .child(div().text_size(10.5).text_color(t.dim).child(text))
+        .child(div().text_size(10).text_color(t.dim).child(String(count)));
+      const pinnedRows = this.pinned.map((n) => ({ agent: n.agent, name: n.name, label: n.agent === this.agent ? n.name.replace(/\.md$/, "") : n.agent + " · " + n.name.replace(/\.md$/, "") }));
+      const mine = this.notes.map((n) => ({ agent: this.agent, name: n.name, label: n.name.replace(/\.md$/, "") }));
       return v_flex().id("notes").size_full().min_w(0).bg(t.surface).text_color(t.foreground).child(head)
-        .child(this.notes.length
-          ? v_flex().flex_1().min_h(0).overflow_y_scrollbar().p(4).children(this.notes.map(row))
-          : v_flex().p(12).child(div().text_size(11.5).text_color(t.dim).child("还没有笔记，点「新建」开始。")))
+        .child((pinnedRows.length || mine.length)
+          ? v_flex().flex_1().min_h(0).overflow_y_scrollbar().p(4).gap(1)
+            .when(pinnedRows.length > 0, (el) => el.child(title("Pinned · 所有 agent 都能看到", pinnedRows.length))
+              .children(pinnedRows.map((n) => row(n, n.label))))
+            .when(mine.length > 0, (el) => el.child(title("这个 agent", mine.length)).children(mine.map((n) => row(n, n.label))))
+          : v_flex().p(12).child(div().text_size(11.5).text_color(t.dim).child("还没有笔记，点 ＋ 开始。")))
         .when(inPane, (el) => el.child(h_flex().flex_none().px(10).py(6).border_t(1).border_color(t.border)
           .child(div().max_w(220).truncate().text_size(10.5).text_color(t.dim).child("文件在 " + dirFor(this.agent)))));
     }
