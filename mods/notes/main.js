@@ -307,7 +307,10 @@ export default class Notes extends View {
     const wide = this.wide;
     const body = this.view === "write"
       ? (this.state
-        ? div().flex_1().min_h(0).min_w(0).p(8).child(Editor.new(this.state).flex_1().min_h(0))
+        ? v_flex().flex_1().min_h(0).min_w(0).p(8).on_size_change((size, cx) => {
+          const h = Math.max(160, Math.round(size.height - 16));
+          if (Math.abs((this.bodyH ?? 0) - h) > 4) { this.bodyH = h; cx.notify(); }
+        }).child(Editor.new(this.state).w_full().h(this.bodyH ?? 420))
         : div().p(12).child("…"))
       : v_flex().flex_1().min_h(0).min_w(0).overflow_y_scrollbar().p(12).gap(8)
         .on_size_change((size, cx) => {
