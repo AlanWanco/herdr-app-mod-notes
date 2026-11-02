@@ -202,6 +202,8 @@ export default class Notes extends View {
     this.nameInput = InputState.new({ value });
     this.nameInput.set_selected_range({ start: 0, end: value.length });
     this.nameInput.on("submit", (_e, cx) => this.rename(this.note, this.nameInput.value(), cx));
+    // Clicking away saves the name too, the way the rest of the panel works.
+    this.nameInput.on("blur", (_e, cx) => { if (this.renaming) this.rename(this.note, this.nameInput.value(), cx); });
     this.renaming = true;
     this.nameInput.focus();
     cx.notify();
