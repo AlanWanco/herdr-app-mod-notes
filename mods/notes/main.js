@@ -1,8 +1,8 @@
 // Notes: markdown files in ~/.config/herdr-app/notes, written with a live preview, pictures pasted
 // straight into the text. Nothing but those files is stored, so they are yours to edit anywhere.
-import { View, div, image } from "gpui-kit";
-import { v_flex, h_flex, Input, InputState, Textarea, TextareaState, TextView } from "gpui-base";
-import { agents, focused, appHome, exec, theme, window, props, openOverlay, closeOverlay } from "herdr";
+import { View, div, image, svg } from "gpui-kit";
+import { v_flex, h_flex, Editor, EditorState, Input, InputState, TextView } from "gpui-base";
+import { agents, focused, appHome, exec, settings, theme, window, props, openOverlay, closeOverlay } from "herdr";
 import * as fs from "fs/promises";
 
 const BASE = () => appHome() + "\\notes";
@@ -118,13 +118,8 @@ export default class Notes extends View {
     this.view = "write";
     try {
       this.text = (await fs.readFile(dirFor(this.noteAgent) + "\\" + name, "utf8")) || "";
-      this.state = TextareaState.new({ value: this.text, rows: 18 });
-      try {
-        this.state.set_soft_wrap(true);
-        this.state.focus();
-        this.state.set_selected_range({ start: 0, end: 0 });
-        if (this.bodyH) this.state.set_rows(Math.max(6, Math.floor(this.bodyH / 20)));
-      } catch { /* widths settle on their own */ }
+      this.state = EditorState.new({ value: this.text, soft_wrap: true, line_numbers: false, folding: false,
+        font_family: settings().font_family, font_size: 13 });
       this.state.on("change", (_e, cx) => { this.text = this.state.value(); this.save(cx); cx.notify(); });
       this.state.on("paste_other", (_e, cx) => this.pasteImage(cx));
       this.measure(this.text, cx);
@@ -269,24 +264,25 @@ export default class Notes extends View {
         .child(h_flex().id("notes-read").h(22).px(8).items_center().rounded(5).text_size(11).cursor_pointer()
           .bg(this.view === "read" ? t.selected : t.raised).text_color(this.view === "read" ? t.foreground : t.dim)
           .on_click((_e, cx) => { this.view = "read"; cx.notify(); }).child("read"))))
-      .when(Boolean(this.note), (el) => el.child(h_flex().id("notes-pin").h(22).px(7).flex_none().items_center().rounded(6)
-        .text_size(10.5).text_color(this.pins[this.pinKey(this.noteAgent, this.note)] ? t.foreground : t.dim)
+      .when(Boolean(this.note), (el) => el.child(h_flex().id("notes-pin").h(22).w(24).flex_none().items_center().justify_center().rounded(6)
+        .text_color(this.pins[this.pinKey(this.noteAgent, this.note)] ? t.accent : t.dim)
         .bg(this.pins[this.pinKey(this.noteAgent, this.note)] ? t.selected : t.chrome)
         .border_1().border_color(t.border).hover((x) => x.bg(t.hover).text_color(t.foreground))
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click((_e, cx) => this.togglePin(this.noteAgent, this.note, cx))
-        .child("pin")))
+        .child(svg("mods/workspace-chrome/" + (this.pins[this.pinKey(this.noteAgent, this.note)] ? "pin.svg" : "pin-off.svg")).size(13))))
       .child(button("notes-new", "＋", (_e, cx) => this.create(cx)))
       .when(inPane && !this.note, (el) => el.child(button("notes-open", "Open", (_e, cx) => openOverlay({ mod: "notes", kind: "dialog", width: 620, height: 660 }))));
 
     if (!this.note) {
       const pinnedNow = (agent, name) => Boolean(this.pins[this.pinKey(agent, name)]);
-      const pinTag = (agent, name) => h_flex().id("pin-" + agent + "-" + name).h(18).px(6).flex_none().items_center().rounded(4)
-        .text_size(10).bg(pinnedNow(agent, name) ? t.selected : t.chrome)
-        .text_color(pinnedNow(agent, name) ? t.foreground : t.dim)
+      const pinTag = (agent, name) => h_flex().id("pin-" + agent + "-" + name).h(20).w(20).flex_none().items_center().justify_center()
+        .rounded(4).bg(pinnedNow(agent, name) ? t.selected : t.chrome)
+        .text_color(pinnedNow(agent, name) ? t.accent : t.dim)
         .hover((x) => x.bg(t.hover).text_color(t.foreground))
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click((_e, cx) => this.togglePin(agent, name, cx))
-        .child(pinnedNow(agent, name) ? "pinned" : "pin");
+        .child(svg("mods/workspace-chrome/" + (pinnedNow(agent, name) ? "pin.svg" : "pin-off.svg")).size(13));
       const row = (n, label) => h_flex().id("note-" + n.agent + "-" + n.name).h(28).flex_none().px(10).gap(8).items_center().cursor_pointer()
         .text_size(12).text_color(t.foreground).hover((x) => x.bg(t.hover))
         .on_click((_e, cx) => this.open(n.name, cx, n.agent))
@@ -311,14 +307,7 @@ export default class Notes extends View {
     const wide = this.wide;
     const body = this.view === "write"
       ? (this.state
-        ? div().flex_1().min_h(0).min_w(0).overflow_hidden().p(8).on_size_change((size, cx) => {
-          const h = Math.max(160, Math.round(size.height - 16));
-          if (Math.abs((this.bodyH ?? 0) - h) > 4) {
-            this.bodyH = h;
-            try { this.state?.set_rows(Math.max(6, Math.floor(h / 20))); } catch { /* the widget is gone */ }
-            cx.notify();
-          }
-        }).child(Textarea.new(this.state).w_full().h(this.bodyH ?? 420))
+        ? div().flex_1().min_h(0).min_w(0).p(8).child(Editor.new(this.state).flex_1().min_h(0))
         : div().p(12).child("…"))
       : v_flex().flex_1().min_h(0).min_w(0).overflow_y_scrollbar().p(12).gap(8)
         .on_size_change((size, cx) => {
