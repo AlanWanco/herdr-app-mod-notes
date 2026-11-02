@@ -106,7 +106,7 @@ export default class Notes extends View {
       if (this.pins[k]) { delete this.pins[k]; this.pins[this.pinKey(agent, to)] = new Date().toISOString(); await fs.writeFile(PINS(), JSON.stringify(this.pins, null, 1)).catch(() => {}); }
       this.note = to;
       this.noteAgent = agent;
-    } catch { this.pasted = "改名失败。"; }
+    } catch { this.pasted = "Rename failed."; }
     this.renaming = false;
     await this.list(cx);
   }
@@ -155,7 +155,7 @@ export default class Notes extends View {
 
   // The clipboard's picture, saved beside the notes and appended as markdown. GDI+ writes the PNG.
   async pasteImage(cx) {
-    this.pasted = "正在从剪贴板取图…";
+    this.pasted = "Reading the clipboard…";
     cx.notify();
     try {
       await fs.mkdir(IMAGES(), { recursive: true });
@@ -165,12 +165,12 @@ export default class Notes extends View {
         + " $i=[System.Windows.Forms.Clipboard]::GetImage(); $i.Save(" + ps(file) + ", [System.Drawing.Imaging.ImageFormat]::Png); $i.Dispose(); 'ok' }"
         + " else { 'none' }";
       const r = await exec("powershell", ["-NoProfile", "-Sta", "-Command", cmd]);
-      if (!/ok/.test(r.stdout)) { this.pasted = "剪贴板里没有图片。"; cx.notify(); return; }
+      if (!/ok/.test(r.stdout)) { this.pasted = "No picture in the clipboard."; cx.notify(); return; }
       const rel = "notes/images/img-" + file.split("img-")[1];
       this.insert("\n![](" + rel + ")\n", cx);
-      this.pasted = "已插入 " + rel;
+      this.pasted = "Added " + rel;
     } catch (e) {
-      this.pasted = "插图失败：" + String(e?.message ?? e).slice(0, 80);
+      this.pasted = "Paste failed: " + String(e?.message ?? e).slice(0, 80);
     }
     cx.notify();
     cx.timer.after(2500, (cx) => { this.pasted = null; cx.notify(); });
@@ -221,9 +221,9 @@ export default class Notes extends View {
       const name = "img-" + stamp() + "." + (path.split(".").pop() || "png");
       const args = ["-y", "-loglevel", "error", "-i", path, IMAGES() + "\\" + name];
       const r = await exec("ffmpeg", args).catch(() => null);
-      if (!r || r.code !== 0) { this.pasted = "这个图片读不了。"; cx.notify(); return; }
+      if (!r || r.code !== 0) { this.pasted = "This picture cannot be read."; cx.notify(); return; }
       this.insert("\n![](notes/images/" + name + ")\n", cx);
-      this.pasted = "已插入 notes/images/" + name;
+      this.pasted = "Added notes/images/" + name;
       this.save(cx);
       cx.notify();
     } catch (e) { this.pasted = String(e?.message ?? e); cx.notify(); }
@@ -256,14 +256,14 @@ export default class Notes extends View {
           .when(Boolean(this.note), (el) => el.cursor_pointer().on_click((_e, cx) => this.startRename(cx)))
           .child(this.note ? this.note.replace(/\.md$/, "") : "Notes"))
       .when(!this.note, (el) => el.child(div().max_w(150).truncate().text_size(10.5).text_color(t.dim)
-        .child(who ? "· " + (who.space_name ?? who.address) : "· 无 agent")))
+        .child(who ? "· " + (who.space_name ?? who.address) : "· no agent")))
       .when(Boolean(this.note), (el) => el.child(h_flex().h(24).flex_none().rounded(6).bg(t.raised).p(1).gap(1)
         .child(h_flex().id("notes-write").h(22).px(8).items_center().rounded(5).text_size(11).cursor_pointer()
           .bg(this.view === "write" ? t.selected : t.raised).text_color(this.view === "write" ? t.foreground : t.dim)
-          .on_click((_e, cx) => { this.view = "write"; cx.notify(); }).child("写"))
+          .on_click((_e, cx) => { this.view = "write"; cx.notify(); }).child("write"))
         .child(h_flex().id("notes-read").h(22).px(8).items_center().rounded(5).text_size(11).cursor_pointer()
           .bg(this.view === "read" ? t.selected : t.raised).text_color(this.view === "read" ? t.foreground : t.dim)
-          .on_click((_e, cx) => { this.view = "read"; cx.notify(); }).child("读"))))
+          .on_click((_e, cx) => { this.view = "read"; cx.notify(); }).child("read"))))
       .when(Boolean(this.note), (el) => el.child(h_flex().id("notes-pin").h(22).px(7).flex_none().items_center().rounded(6)
         .text_size(10.5).text_color(this.pins[this.pinKey(this.noteAgent, this.note)] ? t.foreground : t.dim)
         .bg(this.pins[this.pinKey(this.noteAgent, this.note)] ? t.selected : t.chrome)
@@ -271,7 +271,7 @@ export default class Notes extends View {
         .on_click((_e, cx) => this.togglePin(this.noteAgent, this.note, cx))
         .child("pin")))
       .child(button("notes-new", "＋", (_e, cx) => this.create(cx)))
-      .when(inPane && !this.note, (el) => el.child(button("notes-open", "打开", (_e, cx) => openOverlay({ mod: "notes", kind: "dialog", width: 620, height: 660 }))));
+      .when(inPane && !this.note, (el) => el.child(button("notes-open", "Open", (_e, cx) => openOverlay({ mod: "notes", kind: "dialog", width: 620, height: 660 }))));
 
     if (!this.note) {
       const pinnedNow = (agent, name) => Boolean(this.pins[this.pinKey(agent, name)]);
@@ -281,7 +281,7 @@ export default class Notes extends View {
         .hover((x) => x.bg(t.hover).text_color(t.foreground))
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click((_e, cx) => this.togglePin(agent, name, cx))
-        .child(pinnedNow(agent, name) ? "pinned" : "钉");
+        .child(pinnedNow(agent, name) ? "pinned" : "pin");
       const row = (n, label) => h_flex().id("note-" + n.agent + "-" + n.name).h(28).flex_none().px(10).gap(8).items_center().cursor_pointer()
         .text_size(12).text_color(t.foreground).hover((x) => x.bg(t.hover))
         .on_click((_e, cx) => this.open(n.name, cx, n.agent))
@@ -295,12 +295,12 @@ export default class Notes extends View {
       return v_flex().id("notes").size_full().min_w(0).bg(t.surface).text_color(t.foreground).child(head)
         .child((pinnedRows.length || mine.length)
           ? v_flex().flex_1().min_h(0).overflow_y_scrollbar().p(4).gap(1)
-            .when(pinnedRows.length > 0, (el) => el.child(title("Pinned · 所有 agent 都能看到", pinnedRows.length))
+            .when(pinnedRows.length > 0, (el) => el.child(title("Pinned · shown to every agent", pinnedRows.length))
               .children(pinnedRows.map((n) => row(n, n.label))))
-            .when(mine.length > 0, (el) => el.child(title("这个 agent", mine.length)).children(mine.map((n) => row(n, n.label))))
-          : v_flex().p(12).child(div().text_size(11.5).text_color(t.dim).child("还没有笔记，点 ＋ 开始。")))
+            .when(mine.length > 0, (el) => el.child(title("This agent", mine.length)).children(mine.map((n) => row(n, n.label))))
+          : v_flex().p(12).child(div().text_size(11.5).text_color(t.dim).child("No notes yet — press ＋ to start.")))
         .when(inPane, (el) => el.child(h_flex().flex_none().px(10).py(6).border_t(1).border_color(t.border)
-          .child(div().max_w(220).truncate().text_size(10.5).text_color(t.dim).child("文件在 " + dirFor(this.agent)))));
+          .child(div().max_w(220).truncate().text_size(10.5).text_color(t.dim).child("Files in " + dirFor(this.agent)))));
     }
 
     const wide = this.wide;
@@ -326,9 +326,9 @@ export default class Notes extends View {
       .child(div().flex_1().min_h(0).when(true, (el) => el.child(body)))
       .child(h_flex().flex_none().px(10).py(5).gap(8).border_t(1).border_color(t.border)
         .child(div().flex_1().min_w(0).truncate().text_size(10.5).text_color(t.dim)
-          .child(this.pasted ?? (this.saved ? "已保存" : "编辑即保存")))
+          .child(this.pasted ?? (this.saved ? "Saved" : "Saves as you type")))
         .when(!inPane, (el) => el.child(h_flex().id("notes-close").h(22).px(8).flex_none().items_center().rounded(6)
           .text_size(11.5).text_color(t.dim).hover((x) => x.bg(t.hover).text_color(t.foreground))
-          .on_click((_e, _cx) => closeOverlay(props().overlay)).child("关闭"))));
+          .on_click((_e, _cx) => closeOverlay(props().overlay)).child("Close"))));
   }
 }

@@ -27,7 +27,7 @@ Or by hand: copy `mods/notes/` into `~/.config/herdr-app/mods/`, add
   that should not be copied per agent. Pins live in `notes/pins.json`.
 - **Rename**: click the note's title and type a new name; Enter commits (write + delete, since the
   sandbox has no rename), Esc leaves it.
-- **写 / 读**: the write side is a textarea, the read side renders the markdown — headings, bold,
+- **Write / Read**: the write side is a textarea, the read side renders the markdown — headings, bold,
   lists, inline code, links, quotes. Autosave 0.7 s after typing stops.
 - **Pictures**: paste an image into the textarea (a paste with no text) and it is saved to
   `notes/images/img-<time>.png` and appended as `![](notes/images/…)`; dropping an image file does

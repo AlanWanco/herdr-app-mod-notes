@@ -12,8 +12,8 @@ per agent, shows them rendered, and takes pasted pictures.
 - `notes/pins.json` maps `"agent/name.md"` to a timestamp: pinned notes are listed under `Pinned` for
 every agent, not just their own, and a pinned note opens with its own agent so saves land right.
 - Renaming is write-then-unlink (the sandbox has no `rename`), and the pin key moves with it.
-- One note open at a time: `写` (a `TextareaState`, soft wrap on, height from `on_size_change`) and
-  `读` (`TextView.markdown`, with `![…](…)` split out and drawn by `image()`).
+- One note open at a time: `Write` (a `TextareaState`, soft wrap on, height from `on_size_change`) and
+  `Read` (`TextView.markdown`, with `![…](…)` split out and drawn by `image()`).
 
 ## What you see
 
