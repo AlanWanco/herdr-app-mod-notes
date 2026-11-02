@@ -119,7 +119,12 @@ export default class Notes extends View {
     try {
       this.text = (await fs.readFile(dirFor(this.noteAgent) + "\\" + name, "utf8")) || "";
       this.state = TextareaState.new({ value: this.text, rows: 18 });
-      try { this.state.set_soft_wrap(true); this.state.focus(); } catch { /* widths settle on their own */ }
+      try {
+        this.state.set_soft_wrap(true);
+        this.state.focus();
+        this.state.set_selected_range({ start: 0, end: 0 });
+        if (this.bodyH) this.state.set_rows(Math.max(6, Math.floor(this.bodyH / 20)));
+      } catch { /* widths settle on their own */ }
       this.state.on("change", (_e, cx) => { this.text = this.state.value(); this.save(cx); cx.notify(); });
       this.state.on("paste_other", (_e, cx) => this.pasteImage(cx));
       this.measure(this.text, cx);
@@ -308,7 +313,11 @@ export default class Notes extends View {
       ? (this.state
         ? div().flex_1().min_h(0).min_w(0).overflow_hidden().p(8).on_size_change((size, cx) => {
           const h = Math.max(160, Math.round(size.height - 16));
-          if (Math.abs((this.bodyH ?? 0) - h) > 4) { this.bodyH = h; cx.notify(); }
+          if (Math.abs((this.bodyH ?? 0) - h) > 4) {
+            this.bodyH = h;
+            try { this.state?.set_rows(Math.max(6, Math.floor(h / 20))); } catch { /* the widget is gone */ }
+            cx.notify();
+          }
         }).child(Textarea.new(this.state).w_full().h(this.bodyH ?? 420))
         : div().p(12).child("…"))
       : v_flex().flex_1().min_h(0).min_w(0).overflow_y_scrollbar().p(12).gap(8)
